@@ -1,0 +1,87 @@
+[
+  {
+    "set": {
+      "set_id": 25864,
+      "number": "75159",
+      "number_variant": 1,
+      "name": "Death Star",
+      "year": 2016,
+      "theme": "Star Wars",
+      "subtheme": "Ultimate Collector Series",
+      "pieces": 4016,
+      "minifigs": 27,
+      "image_url": "https://images.brickset.com/sets/images/75159-1.jpg",
+      "thumbnail_url": "https://images.brickset.com/sets/small/75159-1.jpg",
+      "brickset_url": "https://brickset.com/sets/75159-1"
+    },
+    "box": "B01",
+    "tags": [
+      "childhood",
+      "display"
+    ],
+    "notes": "Example entry from the seed data. Safe to delete."
+  },
+  {
+    "set": {
+      "set_id": 29357,
+      "number": "75257",
+      "number_variant": 1,
+      "name": "Millennium Falcon",
+      "year": 2019,
+      "theme": "Star Wars",
+      "subtheme": "Episode IX",
+      "pieces": 1351,
+      "minifigs": 7,
+      "image_url": "https://images.brickset.com/sets/images/75257-1.jpg",
+      "thumbnail_url": "https://images.brickset.com/sets/small/75257-1.jpg",
+      "brickset_url": "https://brickset.com/sets/75257-1"
+    },
+    "box": "B02",
+    "tags": [
+      "modern"
+    ],
+    "notes": "Example entry from the seed data. Safe to delete."
+  },
+  {
+    "set": {
+      "set_id": 28087,
+      "number": "75955",
+      "number_variant": 1,
+      "name": "Hogwarts Express",
+      "year": 2018,
+      "theme": "Harry Potter",
+      "subtheme": "Prisoner of Azkaban",
+      "pieces": 801,
+      "minifigs": 6,
+      "image_url": "https://images.brickset.com/sets/images/75955-1.jpg",
+      "thumbnail_url": "https://images.brickset.com/sets/small/75955-1.jpg",
+      "brickset_url": "https://brickset.com/sets/75955-1"
+    },
+    "box": "B03",
+    "tags": [
+      "modern"
+    ],
+    "notes": "Example entry from the seed data. Safe to delete."
+  },
+  {
+    "set": {
+      "set_id": 27272,
+      "number": "70656",
+      "number_variant": 1,
+      "name": "garmadon, Garmadon, GARMADON!",
+      "year": 2017,
+      "theme": "The LEGO Ninjago Movie",
+      "subtheme": null,
+      "pieces": 830,
+      "minifigs": 6,
+      "image_url": "https://images.brickset.com/sets/images/70656-1.jpg",
+      "thumbnail_url": "https://images.brickset.com/sets/small/70656-1.jpg",
+      "brickset_url": "https://brickset.com/sets/70656-1"
+    },
+    "box": "B04",
+    "tags": [
+      "modern"
+    ],
+    "notes": "Example entry from the seed data. Safe to delete."
+  }
+]

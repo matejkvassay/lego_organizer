@@ -1,0 +1,23 @@
+[project]
+name = "lego-organizer"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "sqlalchemy>=2",
+  "pydantic-settings",
+  "httpx",
+  "pydantic-ai-slim[openai]",
+  "authlib",
+  "itsdangerous",
+  "python-multipart",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = [".", "tests"]

@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    ports: ["127.0.0.1:8000:8000"]   # local only; do not expose on the network
+    env_file: .env
+    environment:
+      DATABASE_URL: sqlite:////data/lego.db
+    volumes:
+      - ./data:/data
