@@ -140,7 +140,8 @@ serving, non-root container, and no secrets in git. Details, threat model and a 
 This is the pre-deployment version (v0.1). It runs locally with real Brickset data, AI search and Google login.
 Not yet done: cloud deployment (the Docker image is intended for Cloud Run, but its build and the
 SQLite-persistence story are untested) and Alembic migrations.
-See [Known gaps](docs/architecture.md#known-gaps--next-steps).
+The concrete next steps to a GCP deployment are in **[TODO.md](TODO.md)**.
+See also [Known gaps](docs/architecture.md#known-gaps--next-steps).
 
 ## License
 
