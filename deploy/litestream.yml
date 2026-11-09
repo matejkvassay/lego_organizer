@@ -3,4 +3,4 @@
 dbs:
   - path: /data/lego.db
     replica:
-      url: gcs://${LITESTREAM_BUCKET}/lego.db
+      url: gs://${LITESTREAM_BUCKET}/lego.db

@@ -61,7 +61,9 @@ backed up, secrets in Secret Manager, deploys automated from GitHub.
 - [x] **Litestream** in the image (pinned 0.5.18, SHA-256 verified per CPU arch), `deploy/litestream.yml`, and
       `deploy/entrypoint.sh` (restore if missing, then `replicate -exec`). Only active when `LITESTREAM_BUCKET` is set.
       Drill passed against a local-folder replica: seed, stop (exit 0), delete the data volume, start fresh: all items, FTS
-      search and migration version came back. **Not tested against real GCS** (needs the bucket from Phase 2).
+      search and migration version came back. The production config uses `gs://` (not `gcs://`, which Litestream rejects);
+      it parses and reaches the GCS client, then fails only for lack of credentials. **Not tested against real GCS**
+      (needs the bucket and service account from Phase 2); the container refuses to start without working credentials.
 - [x] Cloud Run settings decided and documented in `docs/architecture.md`: `--max-instances=1`, `--no-cpu-throttling`.
 - [x] Structured JSON logging; request lines carry no query string, cookies or headers (tested). uvicorn's access log is
       off; `httpx` and `alembic` are quiet.
