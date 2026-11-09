@@ -70,7 +70,11 @@ docker compose up --build            # http://localhost:8000
 docker compose run --rm app python -m app.seed   # optional: load 4 example sets (works offline)
 ```
 
-Your data lives in `./data/lego.db`. Back it up by copying the file.
+Your data lives in the Docker volume `lego-data` (a host folder would need `chown 10001`, because the app runs
+as a non-root user). Back it up with the in-app CSV/JSON export, or copy the file out:
+`docker compose cp app:/data/lego.db ./backup.db`. The image runs database migrations on every start.
+Compose needs the `docker compose` plugin (Homebrew: `brew install docker-compose`). If you use plain
+`docker run --env-file .env`, delete the inline `# comments` in `.env` first, because Docker does not strip them.
 
 ### 2b. Run for development
 
@@ -138,8 +142,9 @@ serving, non-root container, and no secrets in git. Details, threat model and a 
 ## Status
 
 This is the pre-deployment version (v0.1). It runs locally with real Brickset data, AI search and Google login.
-Not yet done: cloud deployment (the Docker image is intended for Cloud Run, but its build and the
-SQLite-persistence story are untested) and Alembic migrations.
+The code is ready for Cloud Run (Alembic migrations, Litestream replication to a GCS bucket, `/healthz`, JSON
+logs, pinned Docker images; the image builds and the backup-and-restore cycle was tested against a local replica).
+Not yet done: the GCP setup and the CI/CD pipeline (see [TODO.md](TODO.md)).
 The concrete next steps to a GCP deployment are in **[TODO.md](TODO.md)**.
 See also [Known gaps](docs/architecture.md#known-gaps--next-steps).
 

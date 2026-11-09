@@ -12,6 +12,7 @@ dependencies = [
   "authlib",
   "itsdangerous",
   "python-multipart",
+  "alembic>=1.20.1",
 ]
 
 [dependency-groups]

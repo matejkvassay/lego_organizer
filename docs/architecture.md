@@ -127,7 +127,8 @@ are different hosts to a browser, and mixing them breaks the OAuth state check).
 | Decision | Why | Cost / alternative |
 |---|---|---|
 | FastAPI + SQLite | One file to back up, zero services to run, enough for ~hundreds of items | Cloud Run's disk is ephemeral, so deployment needs replication (Litestream) or a move to Postgres |
-| SQLAlchemy without Alembic (for now) | Fastest path to v1 | Schema changes will need migrations before the data is precious |
+| Alembic migrations, run on every start | Schema changes keep the data; the baseline adopts databases created by v0.1 | The FTS5 table is hand-managed (hidden from autogenerate); a test fails if the models drift from the migrations |
+| Litestream to a GCS bucket | Cloud Run's disk is ephemeral; replicating the SQLite file keeps "no database server" | Restore happens at container start, so a cold start after data loss is slower; Cloud Run must stay at one instance |
 | Brickset as the only data source | Rich set data, free key, one source to reason about | Daily API limit, mitigated by caching every set and capping the agent's searches |
 | Images hotlinked, not downloaded | Simplest; the owner chose it for v1 | Images break if the source URL dies; downloading to disk or GCS is a contained later change |
 | A small agent with one tool, structured output | Handles fuzzy memories ("the pharaoh castle from the 90s") without vector search or a big model | Needs an LLM call per lookup; limited by Brickset's search quality |
@@ -136,6 +137,26 @@ are different hosts to a browser, and mixing them breaks the OAuth state check).
 | React + Vite + Tailwind, no router/state libs | Mainstream and low-dependency; a tiny hash router is enough for three screens | Would need a real router if the app grows |
 | Single user, one allowed email, no bypass | The data is personal; one auth path means the tested path is the real one | Not multi-user; adding users means a users table and per-user data |
 | Config only through environment variables | Same image runs locally and in the cloud | Secrets must be supplied by the environment |
+
+## Deployment on Cloud Run (intended settings)
+
+The container entrypoint (`deploy/entrypoint.sh`) behaves by environment:
+
+- `LITESTREAM_BUCKET` set (Cloud Run): restore the database from the bucket if there is no local file, then run the app
+  under `litestream replicate`, which streams every change back. Credentials are the runtime service account's.
+- unset (local Compose): just run the app.
+
+| Setting | Value | Why |
+|---|---|---|
+| `--max-instances=1` | required | SQLite has one writer; two instances would fork the data |
+| `--no-cpu-throttling` | chosen | With request-only CPU, Litestream could not upload between requests, so a crash could lose the last writes. Always-on CPU costs a few cents per active day; the service still scales to zero when idle |
+| `--min-instances=0` | default | Scale to zero; the first request after idle restores from the bucket if the disk is gone |
+| `FORWARDED_ALLOW_IPS=*` | Cloud Run only | Trusts `X-Forwarded-*` headers. The image default (127.0.0.1) ignores them, which is correct anywhere else |
+| startup/liveness probe | `GET /healthz` | Anonymous; returns 200 only if the database answers |
+| `LITESTREAM_BUCKET`, secrets | from Secret Manager / env | Never baked into the image |
+
+Logs are one JSON object per line on stderr (Cloud Logging parses them). Request lines carry only method, path, status
+and duration, so query strings (the OAuth `code`), cookies and headers never reach the logs.
 
 ## Testing
 
@@ -147,7 +168,5 @@ OpenAI was checked manually.
 
 ## Known gaps / next steps
 
-- Deployment is designed for but not done: Docker image and Compose file exist; Cloud Run needs SQLite
-  persistence (Litestream to a GCS bucket) and a registered production redirect URI.
-- Alembic migrations.
+- Deployment: the code side is done (see below). Still to do: GCP setup, a registered production redirect URI, CI/CD.
 - Optional: download and store images, price tracking, parts and minifig inventories.

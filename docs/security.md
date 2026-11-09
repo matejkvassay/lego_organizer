@@ -15,6 +15,8 @@ from the internet (Cloud Run). This is the threat model, what is in place, and t
 | Clickjacking / MIME sniffing | `X-Frame-Options: DENY`, `frame-ancestors 'none'`, `nosniff` |
 | CSRF | Session cookie is `SameSite=Lax` and `HttpOnly` (`Secure` when `BASE_URL` is https), so cross-site POST/PATCH/DELETE carry no session |
 | API discovery | `/docs` and `/openapi.json` are disabled |
+| Credentials in logs | Logs are JSON with method, path, status and duration only: no query strings (so no OAuth `code`), cookies or headers. uvicorn's access log is off, and `httpx` request logging is limited to warnings |
+| Cross-site logout | `/auth/logout` is `POST` only (the session cookie is `SameSite=Lax`, so other sites cannot send it) |
 | Information leaks | Upstream (OpenAI/Brickset) error details are logged server-side only; clients get generic messages |
 | Oversized uploads | Voice recordings are capped at 25 MB |
 | Prompt injection via Brickset text | The AI agent has one read-only search tool and cannot write; its output is filtered to sets in the local cache and the user picks the final result |
@@ -37,7 +39,5 @@ from the internet (Cloud Run). This is the threat model, what is in place, and t
 ## Known limitations
 
 - No rate limiting: acceptable for one authenticated user; revisit if more users are ever added.
-- `GET /auth/logout` can be triggered cross-site (it only signs you out).
-- The OAuth `code` appears in access logs for one redirect; it is single-use.
 - Images are hotlinked from Brickset, so their servers see your browser's requests.
-- The Docker image has not been built or run in this environment yet.
+- The production Cloud Run configuration (`FORWARDED_ALLOW_IPS=*`, Litestream bucket, secrets) has not been deployed yet.

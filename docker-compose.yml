@@ -6,4 +6,7 @@ services:
     environment:
       DATABASE_URL: sqlite:////data/lego.db
     volumes:
-      - ./data:/data
+      - lego-data:/data   # named volume: a host folder would need chown to uid 10001 (the non-root app user)
+
+volumes:
+  lego-data:

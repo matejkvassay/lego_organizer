@@ -45,14 +45,23 @@ def get_session() -> Iterator[Session]:
         yield s
 
 
-def init_db() -> None:
-    from . import models  # noqa: F401
+def include_object(obj, name, type_, reflected, compare_to) -> bool:
+    """Alembic filter: the FTS5 virtual table and its shadow tables are managed by hand, not by the models."""
+    return not (type_ == "table" and name.startswith("item_fts"))
 
-    engine = get_engine()
-    Base.metadata.create_all(engine)
-    with engine.begin() as conn:
-        # FTS5 index over the collection; maintained by search.reindex_item.
-        conn.execute(text(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS item_fts USING fts5("
-            "title, number, theme, subtheme, tags, box, notes, tokenize='unicode61 remove_diacritics 2')"
-        ))
+
+def init_db() -> None:
+    """Bring the database to the latest schema (creates it on first run)."""
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config()
+    cfg.set_main_option("script_location", str(Path(__file__).with_name("migrations")))
+    get_engine()  # also creates the parent folder of a SQLite file
+    command.upgrade(cfg, "head")
+
+
+def check_db() -> None:
+    """Raise if the database cannot be queried (used by /healthz)."""
+    with get_engine().connect() as conn:
+        conn.execute(text("SELECT 1"))

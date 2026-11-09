@@ -3,8 +3,8 @@
 Written for the next working session (human or AI agent). Read first: [README](README.md),
 [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md), [docs/plan.md](docs/plan.md).
 
-**State now (v0.1):** works locally with real Brickset, OpenAI and Google login; 16 backend tests pass; Docker image
-and Compose file exist but have **never been built or run**; nothing is deployed.
+**State now:** works locally with real Brickset, OpenAI and Google login; 24 backend tests pass; the Docker image builds
+and runs (with migrations and Litestream); Phases 0 and 1 are done except the two owner checks below; nothing is deployed.
 
 **Goal:** the app running on Cloud Run behind HTTPS, login limited to one Google account, data durably stored and
 backed up, secrets in Secret Manager, deploys automated from GitHub.
@@ -27,6 +27,10 @@ backed up, secrets in Secret Manager, deploys automated from GitHub.
   `/auth/login` redirects to the host in `BASE_URL`; always open the app at exactly that address.
 - **Google redirect URIs** must match exactly and can take minutes to apply. Prod needs its own
   `https://<host>/auth/callback` registered.
+- **Docker + non-root + bind mounts:** a host folder is not writable by uid 10001; use the named volume.
+- **`docker run --env-file` does not strip inline `# comments`** (Compose does); `.env.example` uses them.
+- **Changing `models.py` needs a migration** (`uv run alembic revision --autogenerate -m "..."` in `backend/`); a test
+  fails otherwise.
 - **`DATABASE_URL` relative paths resolve from the server's working directory.** Starting from `backend/` and from the
   repo root gives two different DB files. In containers use the absolute `sqlite:////data/lego.db`.
 - **Brickset** has a daily `getSets` limit (number not published). Every set is cached; the agent is capped by
@@ -37,26 +41,31 @@ backed up, secrets in Secret Manager, deploys automated from GitHub.
 - FTS5 is SQLite-specific; moving to Postgres later means reworking `search.py` (e.g. `tsvector`).
 
 ## Phase 0: make it real locally (small, do first)
-- [ ] Start Docker and run `docker build -t lego-organizer .`; fix whatever breaks (never been tried).
-- [ ] `docker compose up`, open `http://localhost:8000`, sign in, run `docker compose run --rm app python -m app.seed`,
-      check add/edit/delete/search/export work **inside the container**.
-- [ ] Verify the non-root user (uid 10001) can write the `./data` bind mount; on Linux hosts this needs `chown`/user
-      mapping. Document the result in the README.
-- [ ] Verify **voice input** end to end in a browser (mic permission, Whisper transcription, CSP allows it).
-- [ ] Add an unauthenticated `GET /healthz` (returns 200, touches the DB) for Cloud Run probes; test it.
+- [x] `docker build -t lego-organizer .` works (it never had been built; it built first time after the Dockerfile rewrite).
+- [ ] **Owner:** `docker compose up`, open the app at `BASE_URL`, sign in, run the seed, and check add/edit/delete/search/
+      export inside the container. Checked without login (plain `docker run`, scratch volume): app starts, `/healthz` 200,
+      `/api` 401, seed works, migrations apply, path traversal returns only the SPA shell. Not checked: anything behind
+      the Google login, and Compose itself (this machine has no `docker compose` plugin: `brew install docker-compose`).
+      Note: port 8000 may already be taken by a dev server.
+- [x] Non-root user (uid 10001) cannot write a host bind mount (`unable to open database file`). Fixed by using a Docker
+      named volume (`lego-data`) in `docker-compose.yml`; documented in the README.
+- [ ] **Owner:** verify **voice input** end to end in a browser (mic permission, Whisper transcription, CSP allows it).
+- [x] Unauthenticated `GET /healthz` (200 only if the DB answers, 503 otherwise), tested.
 
 ## Phase 1: code changes needed before deploying
-- [ ] **Alembic migrations.** Replace `create_all` with migrations (baseline = current schema) so data survives
-      schema changes. Run migrations on startup, including the FTS5 table.
-- [ ] **Litestream** for SQLite persistence (Cloud Run's disk is ephemeral): add the binary and a `litestream.yml` to
-      the image; entrypoint = `litestream restore -if-db-not-exists -if-replica-exists` then
-      `litestream replicate -exec "uvicorn ..."`. Replica = private GCS bucket. Set the DB to WAL mode (already on).
-- [ ] Constrain Cloud Run to **one instance** (`--max-instances=1`; SQLite is single-writer) and keep CPU allocated
-      while replicating (`--no-cpu-throttling`) or accept the replication lag trade-off; document the choice.
-- [ ] Structured JSON logging; make sure logs never contain keys, cookies, or the OAuth `code` query string.
-- [ ] Make `POST /auth/logout` (currently GET, cross-site triggerable) and update the UI button.
-- [ ] Pin the Docker base images (`python`, `node`, `uv`) to versions or digests instead of `latest`.
-- [ ] Decide `uvicorn --forwarded-allow-ips='*'` is acceptable only because Cloud Run fronts it; keep it Cloud Run-only.
+- [x] **Alembic migrations.** Baseline `0001` = the v0.1 schema + FTS5 table; runs on every start; adopts databases made
+      by v0.1 with their data. Tests: fresh DB, v0.1 DB adoption, idempotent re-run, and models-vs-migrations drift.
+- [x] **Litestream** in the image (pinned 0.5.18, SHA-256 verified per CPU arch), `deploy/litestream.yml`, and
+      `deploy/entrypoint.sh` (restore if missing, then `replicate -exec`). Only active when `LITESTREAM_BUCKET` is set.
+      Drill passed against a local-folder replica: seed, stop (exit 0), delete the data volume, start fresh: all items, FTS
+      search and migration version came back. **Not tested against real GCS** (needs the bucket from Phase 2).
+- [x] Cloud Run settings decided and documented in `docs/architecture.md`: `--max-instances=1`, `--no-cpu-throttling`.
+- [x] Structured JSON logging; request lines carry no query string, cookies or headers (tested). uvicorn's access log is
+      off; `httpx` and `alembic` are quiet.
+- [x] `POST /auth/logout` (204) with a button in the UI; GET is gone (tested).
+- [x] Docker base images pinned: `node:22.23.4-bookworm-slim`, `python:3.12.16-slim-bookworm`, `uv:0.13.7`.
+- [x] `--forwarded-allow-ips='*'` removed from the image: uvicorn now reads `FORWARDED_ALLOW_IPS` (default 127.0.0.1),
+      which only the Cloud Run deploy sets to `*`.
 
 ## Phase 2: GCP setup (owner approves each step)
 - [ ] Create/choose a GCP project and billing account; set a **budget alert** (e.g. low monthly cap).

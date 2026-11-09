@@ -205,3 +205,36 @@ def test_errors_do_not_leak_internals(client, monkeypatch):
     monkeypatch.setattr(brickset, "search_remote", boom)
     r = client.post("/api/catalog/search", json={"query": "x", "mode": "keyword"})
     assert r.status_code == 502 and "proj_ABC123" not in r.text
+
+
+# ---------- Phase 0/1: health, logout, logging ----------
+
+def test_healthz_is_public_and_touches_db(client):
+    client.app.dependency_overrides.clear()  # no login: Cloud Run probes are anonymous
+    r = client.get("/healthz")
+    assert r.status_code == 200 and r.json() == {"status": "ok"}
+
+
+def test_healthz_fails_when_db_is_down(client, monkeypatch):
+    from app import main
+    def boom(*a, **k): raise RuntimeError("db gone")
+    monkeypatch.setattr(main, "check_db", boom)
+    assert client.get("/healthz").status_code == 503
+
+
+def test_logout_requires_post_and_clears_session(client):
+    assert client.get("/auth/logout").status_code in (404, 405)  # a cross-site <img>/link must not log you out
+    r = client.post("/auth/logout")
+    assert r.status_code == 204
+
+
+def test_json_logs_never_contain_query_string_or_secrets(client, capsys):
+    import json
+    client.get("/auth/callback?state=SECRETSTATE&code=SECRETCODE", follow_redirects=False)
+    # Server-side lines only: the TestClient's own HTTP-client logger echoes the URL it requested.
+    lines = [json.loads(l) for l in capsys.readouterr().err.splitlines() if l.startswith("{")]
+    server = [l for l in lines if not l["logger"].startswith("httpx")]
+    assert server and "SECRETCODE" not in json.dumps(server) and "SECRETSTATE" not in json.dumps(server)
+    line = next(l for l in server if "path" in l)
+    assert line["path"] == "/auth/callback" and line["status"] == 307 and line["method"] == "GET"
+    assert "cookie" not in json.dumps(line).lower()

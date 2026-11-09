@@ -1,3 +1,5 @@
+import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,7 +10,10 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import api, auth
 from .config import get_settings
-from .db import init_db
+from .db import check_db, init_db
+from .logging_config import configure_logging
+
+log = logging.getLogger("app.request")
 
 
 @asynccontextmanager
@@ -30,10 +35,35 @@ def check_secrets(s) -> None:
 
 
 def create_app() -> FastAPI:
+    configure_logging()
     s = get_settings()
     check_secrets(s)
     # No public /docs or /openapi.json: they would describe the API to anyone on the internet.
     app = FastAPI(title="Lego Organizer", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+
+    @app.get("/healthz", include_in_schema=False)
+    def healthz():
+        """Anonymous liveness/readiness probe for Cloud Run: 200 only if the database answers."""
+        try:
+            check_db()
+        except Exception:
+            log.exception("healthcheck failed")
+            raise HTTPException(503, "database unavailable")
+        return {"status": "ok"}
+
+    @app.middleware("http")
+    async def request_log(request: Request, call_next):
+        start = time.perf_counter()
+        status = 500
+        try:
+            resp = await call_next(request)
+            status = resp.status_code
+            return resp
+        finally:
+            if request.url.path != "/healthz":  # probes would drown the log
+                log.info("request", extra={"fields": {
+                    "method": request.method, "path": request.url.path, "status": status,
+                    "duration_ms": round((time.perf_counter() - start) * 1000, 1)}})
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
