@@ -16,9 +16,23 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest", "pytest-asyncio"]
+dev = ["pytest", "pytest-asyncio", "ruff"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = [".", "tests"]
+
+[tool.ruff]
+line-length = 120
+extend-exclude = ["app/migrations/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = [
+  "B008",  # FastAPI's Depends()/File() in argument defaults is the framework's idiom
+  "B904", "B007",  # existing code style: HTTPException in except blocks, unused loop vars in tests
+  "E501",  # no formatter is enforced; long lines are tolerated
+  "E701", "E702", "E731",  # the codebase uses compact one-line bodies and small lambdas
+]

@@ -4,7 +4,8 @@ Written for the next working session (human or AI agent). Read first: [README](R
 [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md), [docs/plan.md](docs/plan.md).
 
 **State now:** works locally with real Brickset, OpenAI and Google login; 24 backend tests pass; the Docker image builds
-and runs (with migrations and Litestream); Phases 0 and 1 are done except the two owner checks below; nothing is deployed.
+and runs (with migrations and Litestream). Phases 0, 1 and the code side of 3 are done; Phase 2 is scripted and waits for
+the owner's GCP account. **Next: follow [docs/deploy.md](docs/deploy.md).** Nothing is deployed yet.
 
 **Goal:** the app running on Cloud Run behind HTTPS, login limited to one Google account, data durably stored and
 backed up, secrets in Secret Manager, deploys automated from GitHub.
@@ -73,26 +74,29 @@ backed up, secrets in Secret Manager, deploys automated from GitHub.
       which only the Cloud Run deploy sets to `*`.
 
 ## Phase 2: GCP setup (owner approves each step)
-- [ ] Create/choose a GCP project and billing account; set a **budget alert** (e.g. low monthly cap).
-- [ ] Enable APIs: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage, Cloud Build (if used).
-- [ ] Artifact Registry Docker repo; private GCS bucket for Litestream (uniform bucket-level access, versioning on,
-      public access prevention on).
-- [ ] Dedicated **runtime service account** with only: read secrets it needs, read/write that one bucket.
-- [ ] Secret Manager entries: `BRICKSET_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-      `SESSION_SECRET` (**generate a new one**, `openssl rand -hex 32`), `ALLOWED_EMAIL`. Mount as env vars.
-- [ ] Use a **separate, restricted OpenAI key with a monthly spend limit** for production.
-- [ ] Deploy to Cloud Run (region near the owner), `BASE_URL=https://<service-url>`, ingress all, unauthenticated
-      invocation allowed (the app does its own Google login).
-- [ ] Google Cloud Console: add the prod redirect URI `https://<host>/auth/callback`; keep the consent screen's test
-      users limited to the owner. Optional: custom domain (Cloud Run domain mapping or load balancer) and update
-      `BASE_URL` and the redirect URI to match.
+Everything below is scripted in `deploy/setup-gcp.sh` (re-runnable, confirms each stage, dry-run with `DRY_RUN=1`).
+Follow [docs/deploy.md](docs/deploy.md). **Status: written and dry-run, not yet run for real; waiting for the owner.**
+- [ ] Project, billing account and a **budget alert** (stage 3).
+- [ ] Enable APIs (stage 4).
+- [ ] Artifact Registry repo and the private, versioned backup bucket (stage 5).
+- [ ] Runtime service account (6 secrets + that one bucket only) and a deployer account (stage 6).
+- [ ] Secret Manager: the 6 values; a **new** `SESSION_SECRET`; a **separate OpenAI key with a monthly spend limit** (stage 7).
+- [ ] Deploy to Cloud Run: done by the Deploy workflow (phase 3). Region default `europe-west1`; `BASE_URL` is the
+      deterministic `https://lego-organizer-<project number>.<region>.run.app`, to be confirmed after the first deploy.
+- [ ] Add the prod redirect URI `<BASE_URL>/auth/callback` in the Google console (manual, stage 9).
+- Skipped for now: custom domain (no domain yet; later update `BASE_URL` and the redirect URI).
 
 ## Phase 3: CI/CD (GitHub Actions)
-- [ ] CI on every push/PR: `uv run pytest`, `npm ci && npm run build`, `npm audit --omit=dev`, `pip-audit`, and a
-      secret scanner (gitleaks).
-- [ ] Deploy workflow on tag or manual trigger: build image, push to Artifact Registry, `gcloud run deploy`.
-- [ ] Authenticate GitHub to GCP with **Workload Identity Federation**, not a downloaded service-account JSON key.
-- [ ] Branch protection on `main` (require CI).
+- [x] `.github/workflows/ci.yml` on every push to `main` and every PR: ruff, pytest, `pip-audit`, oxlint, frontend build,
+      `npm audit --omit=dev`, gitleaks over the full history, and a Docker build with a smoke test (command passthrough,
+      `/healthz`, `/api` 401). Actions are pinned to commit SHAs. Each check was run locally; **not yet run on GitHub**.
+- [x] `.github/workflows/deploy.yml`: manual or on a `v*` tag, only from `main`/tags; runs CI first, builds and pushes
+      the image, `gcloud run deploy` (1 instance, CPU always on, secrets from Secret Manager, `/healthz` probe), then
+      checks the live URL. Linted with actionlint; **never run**.
+- [x] GitHub to GCP with **Workload Identity Federation** (no JSON key), limited to this repository (created by the
+      setup script, stage 8).
+- [ ] **Owner:** branch protection on `main` requiring the 4 CI jobs. May be unavailable on a private repo with a free
+      GitHub plan (see docs/deploy.md section 5).
 
 ## Phase 4: verify production
 - [ ] Sign in with the allowed account works; a different Google account is rejected with the friendly message.
@@ -122,6 +126,7 @@ git grep -nIE 'sk-[A-Za-z0-9_-]{16,}|GOCSPX-|AIza[0-9A-Za-z_-]{30,}|BEGIN [A-Z ]
 If a key ever leaks (git history, chat, logs): **rotate it at the provider first**, then clean up.
 
 ## Small tech debt
-- [ ] `pytest-asyncio` warns that `asyncio_default_fixture_loop_scope` is unset; set it in `pyproject.toml`.
-- [ ] Add lint/format config (ruff for Python; oxlint is already scaffolded for the frontend) and run it in CI.
+- [x] `pytest-asyncio` loop scope set in `pyproject.toml`.
+- [x] Lint config: ruff (Python, `pyproject.toml`) and oxlint (frontend), both run in CI. oxlint has 2 existing warnings
+      (`ui.tsx`, `Collection.tsx`) that do not fail the build.
 - [ ] No rate limiting; acceptable for one user, revisit if that ever changes.

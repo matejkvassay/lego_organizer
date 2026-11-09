@@ -28,6 +28,8 @@ from the internet (Cloud Run). This is the threat model, what is in place, and t
 
 - Serve over **HTTPS only** and set `BASE_URL` to the `https://` URL; this turns on `Secure` cookies and HSTS.
   Register `https://<your-host>/auth/callback` in the Google OAuth client.
+- CI never holds a Google key: the Deploy workflow uses Workload Identity Federation limited to this repository, and
+  only runs from `main` or a version tag. Actions are pinned to commit SHAs; gitleaks scans the full history on every run.
 - Put keys in **Secret Manager** and mount them as environment variables; do not bake `.env` into an image.
 - Generate a **new** `SESSION_SECRET` for production (`openssl rand -hex 32`); never reuse the dev one.
 - Use a **dedicated, restricted OpenAI key** with a monthly spend limit, and a Brickset key used only here.

@@ -168,5 +168,6 @@ OpenAI was checked manually.
 
 ## Known gaps / next steps
 
-- Deployment: the code side is done (see below). Still to do: GCP setup, a registered production redirect URI, CI/CD.
+- Deployment: code, CI and the deploy workflow are done (see below). Still to do: run `deploy/setup-gcp.sh`, register the
+  production redirect URI, first deploy and verification: see [deploy.md](deploy.md).
 - Optional: download and store images, price tracking, parts and minifig inventories.

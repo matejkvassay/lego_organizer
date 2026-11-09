@@ -1,10 +1,10 @@
 import pytest
+from conftest import fake_set
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 
 from app import agent, brickset
 from app.db import get_session
-from conftest import fake_set
 
 
 @pytest.fixture
@@ -128,7 +128,6 @@ def test_login_redirects_to_canonical_host(client, monkeypatch):
 
 
 def test_callback_without_session_redirects_with_error(client, monkeypatch):
-    from app import config
     r = client.get("/auth/callback?state=x&code=y", follow_redirects=False)
     assert r.status_code == 307 and r.headers["location"] == "/?login_error=failed"
 
@@ -158,6 +157,7 @@ def test_seed_is_offline_and_idempotent(client, capsys):
 
 def _static_app(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
+
     from app import config
     from app.main import create_app
     dist = tmp_path / "site" / "dist"
@@ -232,9 +232,9 @@ def test_json_logs_never_contain_query_string_or_secrets(client, capsys):
     import json
     client.get("/auth/callback?state=SECRETSTATE&code=SECRETCODE", follow_redirects=False)
     # Server-side lines only: the TestClient's own HTTP-client logger echoes the URL it requested.
-    lines = [json.loads(l) for l in capsys.readouterr().err.splitlines() if l.startswith("{")]
-    server = [l for l in lines if not l["logger"].startswith("httpx")]
+    lines = [json.loads(ln) for ln in capsys.readouterr().err.splitlines() if ln.startswith("{")]
+    server = [ln for ln in lines if not ln["logger"].startswith("httpx")]
     assert server and "SECRETCODE" not in json.dumps(server) and "SECRETSTATE" not in json.dumps(server)
-    line = next(l for l in server if "path" in l)
+    line = next(ln for ln in server if "path" in ln)
     assert line["path"] == "/auth/callback" and line["status"] == 307 and line["method"] == "GET"
     assert "cookie" not in json.dumps(line).lower()

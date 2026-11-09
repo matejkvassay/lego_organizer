@@ -6,10 +6,10 @@ Safe to run twice; sets that are already in the collection are skipped.
 import json
 from pathlib import Path
 
+from . import service
 from .db import get_session, init_db
 from .models import BricksetSet, Item
 from .schemas import ItemCreate
-from . import service
 
 DATA = Path(__file__).with_name("seed_data.json")
 

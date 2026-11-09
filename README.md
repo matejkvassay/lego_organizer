@@ -144,7 +144,8 @@ serving, non-root container, and no secrets in git. Details, threat model and a 
 This is the pre-deployment version (v0.1). It runs locally with real Brickset data, AI search and Google login.
 The code is ready for Cloud Run (Alembic migrations, Litestream replication to a GCS bucket, `/healthz`, JSON
 logs, pinned Docker images; the image builds and the backup-and-restore cycle was tested against a local replica).
-Not yet done: the GCP setup and the CI/CD pipeline (see [TODO.md](TODO.md)).
+CI (lint, tests, audits, secret scan, image smoke test) and a keyless GitHub-to-Cloud-Run deploy workflow are written.
+Not yet done: running the GCP setup and the first real deploy: follow [docs/deploy.md](docs/deploy.md).
 The concrete next steps to a GCP deployment are in **[TODO.md](TODO.md)**.
 See also [Known gaps](docs/architecture.md#known-gaps--next-steps).
 

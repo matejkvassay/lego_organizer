@@ -1,4 +1,3 @@
-import sqlite3
 
 import pytest
 from alembic.autogenerate import compare_metadata

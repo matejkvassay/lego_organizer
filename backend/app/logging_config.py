@@ -3,7 +3,7 @@ status and duration only: query strings (OAuth `code`/`state`), cookies and head
 import json
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # Cloud Logging severity names.
 _SEVERITY = {"WARNING": "WARNING", "ERROR": "ERROR", "CRITICAL": "CRITICAL", "INFO": "INFO", "DEBUG": "DEBUG"}
@@ -12,7 +12,7 @@ _SEVERITY = {"WARNING": "WARNING", "ERROR": "ERROR", "CRITICAL": "CRITICAL", "IN
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         out = {
-            "time": datetime.fromtimestamp(record.created, timezone.utc).isoformat(),
+            "time": datetime.fromtimestamp(record.created, UTC).isoformat(),
             "severity": _SEVERITY.get(record.levelname, "DEFAULT"),
             "logger": record.name,
             "message": record.getMessage(),
