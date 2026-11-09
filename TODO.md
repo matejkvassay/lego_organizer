@@ -27,6 +27,9 @@ backed up, secrets in Secret Manager, deploys automated from GitHub.
   `/auth/login` redirects to the host in `BASE_URL`; always open the app at exactly that address.
 - **Google redirect URIs** must match exactly and can take minutes to apply. Prod needs its own
   `https://<host>/auth/callback` registered.
+- **`ENTRYPOINT` must pass commands through.** `deploy/entrypoint.sh` once ignored its arguments, so
+  `docker compose run app python -m app.seed` silently started the web server and never returned. It now runs any given
+  command with `exec "$@"`; with no arguments it starts the app.
 - **Docker + non-root + bind mounts:** a host folder is not writable by uid 10001; use the named volume.
 - **`docker run --env-file` does not strip inline `# comments`** (Compose does); `.env.example` uses them.
 - **Changing `models.py` needs a migration** (`uv run alembic revision --autogenerate -m "..."` in `backend/`); a test

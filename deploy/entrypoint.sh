@@ -6,6 +6,12 @@
 # Behind Cloud Run set FORWARDED_ALLOW_IPS='*' (uvicorn reads it); the default (127.0.0.1) ignores X-Forwarded-*
 # headers from anyone else, which is what you want anywhere the port is reachable directly.
 set -eu
+
+# A command was given (`docker compose run app python -m app.seed`): run exactly that, not the web server.
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
 APP="uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
 
 if [ -n "${LITESTREAM_BUCKET:-}" ]; then
