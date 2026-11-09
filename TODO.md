@@ -42,11 +42,11 @@ backed up, secrets in Secret Manager, deploys automated from GitHub.
 
 ## Phase 0: make it real locally (small, do first)
 - [x] `docker build -t lego-organizer .` works (it never had been built; it built first time after the Dockerfile rewrite).
-- [ ] **Owner:** `docker compose up`, open the app at `BASE_URL`, sign in, run the seed, and check add/edit/delete/search/
-      export inside the container. Checked without login (plain `docker run`, scratch volume): app starts, `/healthz` 200,
-      `/api` 401, seed works, migrations apply, path traversal returns only the SPA shell. Not checked: anything behind
-      the Google login, and Compose itself (this machine has no `docker compose` plugin: `brew install docker-compose`).
-      Note: port 8000 may already be taken by a dev server.
+- [x] `docker compose up --build` verified (Docker Desktop, Compose v5): starts, `/healthz` 200, `/api` 401, CSP headers,
+      seed works, data survives a restart in the `lego-data` volume (file owned by uid 10001).
+- [ ] **Owner:** sign in with Google in the container and click through add/edit/delete/search/export (needs your login).
+      Tip: port 8000 may be taken by a dev server; stop it first. On Docker Desktop, `docker-credential-desktop` may be
+      missing from PATH in non-interactive shells (`/Applications/Docker.app/Contents/Resources/bin`).
 - [x] Non-root user (uid 10001) cannot write a host bind mount (`unable to open database file`). Fixed by using a Docker
       named volume (`lego-data`) in `docker-compose.yml`; documented in the README.
 - [ ] **Owner:** verify **voice input** end to end in a browser (mic permission, Whisper transcription, CSP allows it).
