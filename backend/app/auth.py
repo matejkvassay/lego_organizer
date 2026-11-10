@@ -70,7 +70,7 @@ async def callback(request: Request):
     return RedirectResponse("/")
 
 
-@router.get("/logout")
+@router.post("/logout", status_code=204)
 def logout(request: Request):
+    # POST only: a GET could be triggered from another site (<img src=".../auth/logout">).
     request.session.clear()
-    return RedirectResponse("/")

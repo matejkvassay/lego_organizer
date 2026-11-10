@@ -1,10 +1,10 @@
 import pytest
+from conftest import fake_set
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 
 from app import agent, brickset
 from app.db import get_session
-from conftest import fake_set
 
 
 @pytest.fixture
@@ -128,7 +128,6 @@ def test_login_redirects_to_canonical_host(client, monkeypatch):
 
 
 def test_callback_without_session_redirects_with_error(client, monkeypatch):
-    from app import config
     r = client.get("/auth/callback?state=x&code=y", follow_redirects=False)
     assert r.status_code == 307 and r.headers["location"] == "/?login_error=failed"
 
@@ -158,6 +157,7 @@ def test_seed_is_offline_and_idempotent(client, capsys):
 
 def _static_app(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
+
     from app import config
     from app.main import create_app
     dist = tmp_path / "site" / "dist"
@@ -205,3 +205,36 @@ def test_errors_do_not_leak_internals(client, monkeypatch):
     monkeypatch.setattr(brickset, "search_remote", boom)
     r = client.post("/api/catalog/search", json={"query": "x", "mode": "keyword"})
     assert r.status_code == 502 and "proj_ABC123" not in r.text
+
+
+# ---------- Phase 0/1: health, logout, logging ----------
+
+def test_healthz_is_public_and_touches_db(client):
+    client.app.dependency_overrides.clear()  # no login: Cloud Run probes are anonymous
+    r = client.get("/healthz")
+    assert r.status_code == 200 and r.json() == {"status": "ok"}
+
+
+def test_healthz_fails_when_db_is_down(client, monkeypatch):
+    from app import main
+    def boom(*a, **k): raise RuntimeError("db gone")
+    monkeypatch.setattr(main, "check_db", boom)
+    assert client.get("/healthz").status_code == 503
+
+
+def test_logout_requires_post_and_clears_session(client):
+    assert client.get("/auth/logout").status_code in (404, 405)  # a cross-site <img>/link must not log you out
+    r = client.post("/auth/logout")
+    assert r.status_code == 204
+
+
+def test_json_logs_never_contain_query_string_or_secrets(client, capsys):
+    import json
+    client.get("/auth/callback?state=SECRETSTATE&code=SECRETCODE", follow_redirects=False)
+    # Server-side lines only: the TestClient's own HTTP-client logger echoes the URL it requested.
+    lines = [json.loads(ln) for ln in capsys.readouterr().err.splitlines() if ln.startswith("{")]
+    server = [ln for ln in lines if not ln["logger"].startswith("httpx")]
+    assert server and "SECRETCODE" not in json.dumps(server) and "SECRETSTATE" not in json.dumps(server)
+    line = next(ln for ln in server if "path" in ln)
+    assert line["path"] == "/auth/callback" and line["status"] == 307 and line["method"] == "GET"
+    assert "cookie" not in json.dumps(line).lower()

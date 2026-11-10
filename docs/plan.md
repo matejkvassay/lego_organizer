@@ -57,7 +57,7 @@
 Build with stubs until these are available.
 
 ## Where the implementation differs from this plan
-- **No Alembic yet.** Tables are created on startup (`create_all`). Add migrations before the first schema change that must preserve data.
+- **Migrations:** Alembic runs on startup (baseline `0001` = the v0.1 schema). Change `models.py` only together with a new migration (`uv run alembic revision --autogenerate -m "..."` from `backend/`, then review it).
 - **Richer agent tool.** After trying real descriptions, the Brickset search tool also accepts `theme`, `subtheme` and `year` filters, not just keywords. Remembered names are often not the official title, and filters let the model reason from its Lego knowledge ("90s pharaoh sets are theme Adventurers").
 - **Agent model** is `gpt-6-luna` (the ID the owner's OpenAI project exposes), with reasoning set to `none`; both are env settings.
 - **No auth bypass.** The planned `AUTH_DISABLED` switch was removed once Google login worked locally, so there is only one code path.

@@ -38,6 +38,7 @@ export const api = {
   items: (f: Filters) => call<Item[]>('/api/items?' + new URLSearchParams(Object.entries(f).filter(([, v]) => v) as [string, string][])),
   item: (id: number) => call<Item>(`/api/items/${id}`),
   facets: () => call<Facets>('/api/facets'),
+  logout: () => call<void>('/auth/logout', { method: 'POST' }),
   create: (b: object) => call<Item>('/api/items', json('POST', b)),
   update: (id: number, b: object) => call<Item>(`/api/items/${id}`, json('PATCH', b)),
   remove: (id: number) => call<void>(`/api/items/${id}`, { method: 'DELETE' }),

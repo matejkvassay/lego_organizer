@@ -1,0 +1,6 @@
+# Continuous SQLite replication to a private GCS bucket. Credentials come from the Cloud Run service account
+# (Application Default Credentials); no key file is baked into the image.
+dbs:
+  - path: /data/lego.db
+    replica:
+      url: gs://${LITESTREAM_BUCKET}/lego.db

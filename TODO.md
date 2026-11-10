@@ -3,8 +3,9 @@
 Written for the next working session (human or AI agent). Read first: [README](README.md),
 [docs/architecture.md](docs/architecture.md), [docs/security.md](docs/security.md), [docs/plan.md](docs/plan.md).
 
-**State now (v0.1):** works locally with real Brickset, OpenAI and Google login; 16 backend tests pass; Docker image
-and Compose file exist but have **never been built or run**; nothing is deployed.
+**State now:** works locally with real Brickset, OpenAI and Google login; 24 backend tests pass; the Docker image builds
+and runs (with migrations and Litestream). Phases 0, 1 and the code side of 3 are done; Phase 2 is scripted and waits for
+the owner's GCP account. **Next: follow [docs/deploy.md](docs/deploy.md).** Nothing is deployed yet.
 
 **Goal:** the app running on Cloud Run behind HTTPS, login limited to one Google account, data durably stored and
 backed up, secrets in Secret Manager, deploys automated from GitHub.
@@ -27,6 +28,13 @@ backed up, secrets in Secret Manager, deploys automated from GitHub.
   `/auth/login` redirects to the host in `BASE_URL`; always open the app at exactly that address.
 - **Google redirect URIs** must match exactly and can take minutes to apply. Prod needs its own
   `https://<host>/auth/callback` registered.
+- **`ENTRYPOINT` must pass commands through.** `deploy/entrypoint.sh` once ignored its arguments, so
+  `docker compose run app python -m app.seed` silently started the web server and never returned. It now runs any given
+  command with `exec "$@"`; with no arguments it starts the app.
+- **Docker + non-root + bind mounts:** a host folder is not writable by uid 10001; use the named volume.
+- **`docker run --env-file` does not strip inline `# comments`** (Compose does); `.env.example` uses them.
+- **Changing `models.py` needs a migration** (`uv run alembic revision --autogenerate -m "..."` in `backend/`); a test
+  fails otherwise.
 - **`DATABASE_URL` relative paths resolve from the server's working directory.** Starting from `backend/` and from the
   repo root gives two different DB files. In containers use the absolute `sqlite:////data/lego.db`.
 - **Brickset** has a daily `getSets` limit (number not published). Every set is cached; the agent is capped by
@@ -37,48 +45,58 @@ backed up, secrets in Secret Manager, deploys automated from GitHub.
 - FTS5 is SQLite-specific; moving to Postgres later means reworking `search.py` (e.g. `tsvector`).
 
 ## Phase 0: make it real locally (small, do first)
-- [ ] Start Docker and run `docker build -t lego-organizer .`; fix whatever breaks (never been tried).
-- [ ] `docker compose up`, open `http://localhost:8000`, sign in, run `docker compose run --rm app python -m app.seed`,
-      check add/edit/delete/search/export work **inside the container**.
-- [ ] Verify the non-root user (uid 10001) can write the `./data` bind mount; on Linux hosts this needs `chown`/user
-      mapping. Document the result in the README.
-- [ ] Verify **voice input** end to end in a browser (mic permission, Whisper transcription, CSP allows it).
-- [ ] Add an unauthenticated `GET /healthz` (returns 200, touches the DB) for Cloud Run probes; test it.
+- [x] `docker build -t lego-organizer .` works (it never had been built; it built first time after the Dockerfile rewrite).
+- [x] `docker compose up --build` verified (Docker Desktop, Compose v5): starts, `/healthz` 200, `/api` 401, CSP headers,
+      seed works, data survives a restart in the `lego-data` volume (file owned by uid 10001).
+- [ ] **Owner:** sign in with Google in the container and click through add/edit/delete/search/export (needs your login).
+      Tip: port 8000 may be taken by a dev server; stop it first. On Docker Desktop, `docker-credential-desktop` may be
+      missing from PATH in non-interactive shells (`/Applications/Docker.app/Contents/Resources/bin`).
+- [x] Non-root user (uid 10001) cannot write a host bind mount (`unable to open database file`). Fixed by using a Docker
+      named volume (`lego-data`) in `docker-compose.yml`; documented in the README.
+- [ ] **Owner:** verify **voice input** end to end in a browser (mic permission, Whisper transcription, CSP allows it).
+- [x] Unauthenticated `GET /healthz` (200 only if the DB answers, 503 otherwise), tested.
 
 ## Phase 1: code changes needed before deploying
-- [ ] **Alembic migrations.** Replace `create_all` with migrations (baseline = current schema) so data survives
-      schema changes. Run migrations on startup, including the FTS5 table.
-- [ ] **Litestream** for SQLite persistence (Cloud Run's disk is ephemeral): add the binary and a `litestream.yml` to
-      the image; entrypoint = `litestream restore -if-db-not-exists -if-replica-exists` then
-      `litestream replicate -exec "uvicorn ..."`. Replica = private GCS bucket. Set the DB to WAL mode (already on).
-- [ ] Constrain Cloud Run to **one instance** (`--max-instances=1`; SQLite is single-writer) and keep CPU allocated
-      while replicating (`--no-cpu-throttling`) or accept the replication lag trade-off; document the choice.
-- [ ] Structured JSON logging; make sure logs never contain keys, cookies, or the OAuth `code` query string.
-- [ ] Make `POST /auth/logout` (currently GET, cross-site triggerable) and update the UI button.
-- [ ] Pin the Docker base images (`python`, `node`, `uv`) to versions or digests instead of `latest`.
-- [ ] Decide `uvicorn --forwarded-allow-ips='*'` is acceptable only because Cloud Run fronts it; keep it Cloud Run-only.
+- [x] **Alembic migrations.** Baseline `0001` = the v0.1 schema + FTS5 table; runs on every start; adopts databases made
+      by v0.1 with their data. Tests: fresh DB, v0.1 DB adoption, idempotent re-run, and models-vs-migrations drift.
+- [x] **Litestream** in the image (pinned 0.5.18, SHA-256 verified per CPU arch), `deploy/litestream.yml`, and
+      `deploy/entrypoint.sh` (restore if missing, then `replicate -exec`). Only active when `LITESTREAM_BUCKET` is set.
+      Drill passed against a local-folder replica: seed, stop (exit 0), delete the data volume, start fresh: all items, FTS
+      search and migration version came back. The production config uses `gs://` (not `gcs://`, which Litestream rejects);
+      it parses and reaches the GCS client, then fails only for lack of credentials. **Not tested against real GCS**
+      (needs the bucket and service account from Phase 2); the container refuses to start without working credentials.
+- [x] Cloud Run settings decided and documented in `docs/architecture.md`: `--max-instances=1`, `--no-cpu-throttling`.
+- [x] Structured JSON logging; request lines carry no query string, cookies or headers (tested). uvicorn's access log is
+      off; `httpx` and `alembic` are quiet.
+- [x] `POST /auth/logout` (204) with a button in the UI; GET is gone (tested).
+- [x] Docker base images pinned: `node:22.23.4-bookworm-slim`, `python:3.12.16-slim-bookworm`, `uv:0.13.7`.
+- [x] `--forwarded-allow-ips='*'` removed from the image: uvicorn now reads `FORWARDED_ALLOW_IPS` (default 127.0.0.1),
+      which only the Cloud Run deploy sets to `*`.
 
 ## Phase 2: GCP setup (owner approves each step)
-- [ ] Create/choose a GCP project and billing account; set a **budget alert** (e.g. low monthly cap).
-- [ ] Enable APIs: Cloud Run, Artifact Registry, Secret Manager, Cloud Storage, Cloud Build (if used).
-- [ ] Artifact Registry Docker repo; private GCS bucket for Litestream (uniform bucket-level access, versioning on,
-      public access prevention on).
-- [ ] Dedicated **runtime service account** with only: read secrets it needs, read/write that one bucket.
-- [ ] Secret Manager entries: `BRICKSET_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
-      `SESSION_SECRET` (**generate a new one**, `openssl rand -hex 32`), `ALLOWED_EMAIL`. Mount as env vars.
-- [ ] Use a **separate, restricted OpenAI key with a monthly spend limit** for production.
-- [ ] Deploy to Cloud Run (region near the owner), `BASE_URL=https://<service-url>`, ingress all, unauthenticated
-      invocation allowed (the app does its own Google login).
-- [ ] Google Cloud Console: add the prod redirect URI `https://<host>/auth/callback`; keep the consent screen's test
-      users limited to the owner. Optional: custom domain (Cloud Run domain mapping or load balancer) and update
-      `BASE_URL` and the redirect URI to match.
+Everything below is scripted in `deploy/setup-gcp.sh` (re-runnable, confirms each stage, dry-run with `DRY_RUN=1`).
+Follow [docs/deploy.md](docs/deploy.md). **Status: written and dry-run, not yet run for real; waiting for the owner.**
+- [ ] Project, billing account and a **budget alert** (stage 3).
+- [ ] Enable APIs (stage 4).
+- [ ] Artifact Registry repo and the private, versioned backup bucket (stage 5).
+- [ ] Runtime service account (6 secrets + that one bucket only) and a deployer account (stage 6).
+- [ ] Secret Manager: the 6 values; a **new** `SESSION_SECRET`; a **separate OpenAI key with a monthly spend limit** (stage 7).
+- [ ] Deploy to Cloud Run: done by the Deploy workflow (phase 3). Region default `europe-west1`; `BASE_URL` is the
+      deterministic `https://lego-organizer-<project number>.<region>.run.app`, to be confirmed after the first deploy.
+- [ ] Add the prod redirect URI `<BASE_URL>/auth/callback` in the Google console (manual, stage 9).
+- Skipped for now: custom domain (no domain yet; later update `BASE_URL` and the redirect URI).
 
 ## Phase 3: CI/CD (GitHub Actions)
-- [ ] CI on every push/PR: `uv run pytest`, `npm ci && npm run build`, `npm audit --omit=dev`, `pip-audit`, and a
-      secret scanner (gitleaks).
-- [ ] Deploy workflow on tag or manual trigger: build image, push to Artifact Registry, `gcloud run deploy`.
-- [ ] Authenticate GitHub to GCP with **Workload Identity Federation**, not a downloaded service-account JSON key.
-- [ ] Branch protection on `main` (require CI).
+- [x] `.github/workflows/ci.yml` on every push to `main` and every PR: ruff, pytest, `pip-audit`, oxlint, frontend build,
+      `npm audit --omit=dev`, gitleaks over the full history, and a Docker build with a smoke test (command passthrough,
+      `/healthz`, `/api` 401). Actions are pinned to commit SHAs. Each check was run locally; **not yet run on GitHub**.
+- [x] `.github/workflows/deploy.yml`: manual or on a `v*` tag, only from `main`/tags; runs CI first, builds and pushes
+      the image, `gcloud run deploy` (1 instance, CPU always on, secrets from Secret Manager, `/healthz` probe), then
+      checks the live URL. Linted with actionlint; **never run**.
+- [x] GitHub to GCP with **Workload Identity Federation** (no JSON key), limited to this repository (created by the
+      setup script, stage 8).
+- [ ] **Owner:** branch protection on `main` requiring the 4 CI jobs. May be unavailable on a private repo with a free
+      GitHub plan (see docs/deploy.md section 5).
 
 ## Phase 4: verify production
 - [ ] Sign in with the allowed account works; a different Google account is rejected with the friendly message.
@@ -108,6 +126,7 @@ git grep -nIE 'sk-[A-Za-z0-9_-]{16,}|GOCSPX-|AIza[0-9A-Za-z_-]{30,}|BEGIN [A-Z ]
 If a key ever leaks (git history, chat, logs): **rotate it at the provider first**, then clean up.
 
 ## Small tech debt
-- [ ] `pytest-asyncio` warns that `asyncio_default_fixture_loop_scope` is unset; set it in `pyproject.toml`.
-- [ ] Add lint/format config (ruff for Python; oxlint is already scaffolded for the frontend) and run it in CI.
+- [x] `pytest-asyncio` loop scope set in `pyproject.toml`.
+- [x] Lint config: ruff (Python, `pyproject.toml`) and oxlint (frontend), both run in CI. oxlint has 2 existing warnings
+      (`ui.tsx`, `Collection.tsx`) that do not fail the build.
 - [ ] No rate limiting; acceptable for one user, revisit if that ever changes.

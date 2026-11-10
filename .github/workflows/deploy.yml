@@ -1,0 +1,67 @@
+name: Deploy
+
+# Manual or on a version tag (git tag v0.2.0 && git push --tags). Never on a plain push.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false   # never interrupt a deploy half way
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: checks
+    # Only code that is on main, or a version tag, may go to production.
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # lets the job exchange its GitHub identity for Google credentials (no JSON key)
+    env:
+      SERVICE: lego-organizer
+      REGION: ${{ vars.GCP_REGION }}
+      IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/lego/lego-organizer:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Build and push the image
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE" \
+            --region "$REGION" \
+            --service-account "${{ vars.GCP_RUNTIME_SA }}" \
+            --max-instances 1 --min-instances 0 \
+            --no-cpu-throttling --cpu-boost \
+            --cpu 1 --memory 512Mi \
+            --allow-unauthenticated \
+            --startup-probe "httpGet.path=/healthz,periodSeconds=3,timeoutSeconds=3,failureThreshold=20" \
+            --set-env-vars "BASE_URL=${{ vars.BASE_URL }},LITESTREAM_BUCKET=${{ vars.GCP_BUCKET }},FORWARDED_ALLOW_IPS=*" \
+            --set-secrets "BRICKSET_API_KEY=brickset-api-key:latest,OPENAI_API_KEY=openai-api-key:latest,GOOGLE_CLIENT_ID=google-client-id:latest,GOOGLE_CLIENT_SECRET=google-client-secret:latest,SESSION_SECRET=session-secret:latest,ALLOWED_EMAIL=allowed-email:latest"
+
+      - name: Check the live service
+        run: |
+          URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')"
+          echo "Service URL: $URL"
+          curl -fsS "$URL/healthz"
+          test "$(curl -s -o /dev/null -w '%{http_code}' "$URL/api/items")" = 401

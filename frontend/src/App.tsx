@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { getMe, type Me } from './api'
+import { api, getMe, type Me } from './api'
 import LoginScreen from './components/LoginScreen'
 import AddPage from './components/AddPage'
 import Collection from './components/Collection'
@@ -35,7 +35,7 @@ export default function App() {
               <span className="block text-xs text-stone-500">Signed in as</span>
               <span className="block max-w-48 truncate font-medium">{me.email}</span>
             </span>
-            <a className={btnGhost} href="/auth/logout">Log out</a>
+            <button className={btnGhost} onClick={() => api.logout().finally(() => setMe(null))}>Log out</button>
           </div>
         </div>
       </header>
