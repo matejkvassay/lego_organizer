@@ -47,3 +47,6 @@ Thumbs.db
 # --- Logs ---
 *.log
 deploy/.setup.env
+
+# Local Claude Code instructions
+.claude/CLAUDE.md
